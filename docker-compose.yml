@@ -1,0 +1,16 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: healthcare-service
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    env_file:
+      - .env
+    volumes:
+      - ./mysql_data:/var/lib/mysql
+      - ./src:/docker-entrypoint-initdb.d
+
+volumes:
+  mysql_data:
+    driver: local

@@ -1,0 +1,156 @@
+================================================================================
+HEALTHCARE ANALYTICS LAB - PART 3.1: DESIGN DECISIONS
+================================================================================
+
+================================================================================
+DECISION 1: FACT TABLE GRAIN
+================================================================================
+
+CHOSEN OPTION: Option A - One row per encounter
+
+JUSTIFICATION:
+- The encounter is the central business event in healthcare analytics
+- All 4 business queries aggregate at the encounter level or higher
+- Diagnoses and procedures are many-to-many with encounters, 
+  making them better suited for bridge tables
+- Pre-aggregating diagnosis_count and procedure_count in the fact table
+  eliminates expensive junction table joins for most queries
+
+ALTERNATIVE CONSIDERED:
+- One row per diagnosis or procedure would cause massive data duplication
+- Would inflate fact table size by 2-4x with redundant encounter data
+
+
+================================================================================
+DECISION 2: DIMENSION TABLES
+================================================================================
+
+1. dim_date
+   - date_key (surrogate key, INT, format: YYYYMMDD)
+   - calendar_date (DATE)
+   - year, month, quarter, day_of_week
+   - month_name, day_name
+   - is_weekend, is_holiday
+   - fiscal_year, fiscal_quarter
+   PURPOSE: Enable time-based analysis without date functions in queries
+
+2. dim_patient
+   - patient_key (surrogate key)
+   - patient_id (natural key from OLTP)
+   - first_name, last_name, full_name
+   - date_of_birth, gender
+   - age_group (0-17, 18-34, 35-54, 55-74, 75+)
+   - mrn
+   PURPOSE: Patient demographics with derived age groupings
+
+3. dim_provider
+   - provider_key (surrogate key)
+   - provider_id (natural key)
+   - first_name, last_name, full_name
+   - credential
+   - specialty_name, specialty_code (denormalized from specialties)
+   - department_name (denormalized from departments)
+   PURPOSE: Flatten provider → specialty → department hierarchy
+
+4. dim_department
+   - department_key (surrogate key)
+   - department_id (natural key)
+   - department_name
+   - floor, capacity
+   PURPOSE: Department attributes for departmental analysis
+
+5. dim_encounter_type
+   - encounter_type_key (surrogate key)
+   - encounter_type_name (Outpatient, Inpatient, ER)
+   - encounter_type_category
+   PURPOSE: Small dimension for encounter type groupings
+
+
+================================================================================
+DECISION 3: PRE-AGGREGATED METRICS
+================================================================================
+
+METRICS STORED IN FACT TABLE:
+
+1. diagnosis_count
+   - Number of diagnoses per encounter
+   - WHY: Eliminates COUNT on junction table for analytics
+   - CALCULATION: COUNT from encounter_diagnoses at ETL time
+
+2. procedure_count
+   - Number of procedures per encounter
+   - WHY: Eliminates COUNT on junction table for analytics
+   - CALCULATION: COUNT from encounter_procedures at ETL time
+
+3. total_claim_amount
+   - Sum of claim amounts for the encounter
+   - WHY: Billing data already 1:1 with encounters; pre-store for speed
+
+4. total_allowed_amount
+   - Sum of allowed amounts for the encounter
+   - WHY: Most common revenue metric; avoid billing table join
+
+5. length_of_stay_days
+   - Days between admission and discharge
+   - WHY: Common inpatient metric; pre-calculate once at ETL
+
+JUSTIFICATION:
+- These metrics are used in 3 of 4 original queries
+- Pre-aggregation moves computation from query time to ETL time
+- Dramatically reduces JOIN complexity for analytical queries
+
+
+================================================================================
+DECISION 4: BRIDGE TABLES
+================================================================================
+
+DECISION: YES - Use bridge tables for many-to-many relationships
+
+BRIDGE TABLES CREATED:
+
+1. bridge_encounter_diagnosis
+   - encounter_key (FK to fact_encounters)
+   - diagnosis_key (FK to dim_diagnosis)
+   - diagnosis_sequence (primary, secondary, etc.)
+
+2. bridge_encounter_procedure
+   - encounter_key (FK to fact_encounters)
+   - procedure_key (FK to dim_procedure)
+   - procedure_date
+
+JUSTIFICATION:
+- Preserves the ability to query individual diagnoses/procedures
+- Essential for Query 2 (diagnosis-procedure pairs)
+- Avoids massive denormalization that would explode fact table size
+- Bridge tables are optional; most queries use pre-aggregated counts
+
+WHY NOT DENORMALIZE INTO FACT:
+- Each encounter can have 1-10+ diagnoses and 1-5+ procedures
+- Denormalizing would create N×M rows per encounter
+- Would inflate fact table from 50K rows to 250K+ rows
+- Would duplicate all other fact columns unnecessarily
+
+
+================================================================================
+SUMMARY: STAR SCHEMA ARCHITECTURE
+================================================================================
+
+                     ┌─────────────┐
+                     │  dim_date   │
+                     └──────┬──────┘
+                            │
+┌─────────────┐      ┌──────┴──────┐      ┌──────────────┐
+│ dim_patient │──────│    FACT     │──────│ dim_provider │
+└─────────────┘      │ ENCOUNTERS  │      └──────────────┘
+                     └──────┬──────┘
+                            │
+         ┌──────────────────┼──────────────────┐
+         │                  │                  │
+         ▼                  ▼                  ▼
+┌────────────────┐  ┌────────────────┐  ┌────────────────┐
+│ dim_department │  │dim_encounter   │  │    BRIDGE      │
+│                │  │    _type       │  │    TABLES      │
+└────────────────┘  └────────────────┘  └────────────────┘
+
+
+================================================================================
