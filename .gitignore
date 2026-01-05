@@ -13,3 +13,4 @@ mysql_data/
 .idea/
 tasks.md
 uv.lock
+data/

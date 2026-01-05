@@ -8,8 +8,8 @@ services:
     env_file:
       - .env
     volumes:
-      - ./mysql_data:/var/lib/mysql
-      - ./src:/docker-entrypoint-initdb.d
+      - ./data/mysql_data:/var/lib/mysql
+      - ./sql/oltp:/docker-entrypoint-initdb.d
 
 volumes:
   mysql_data:
