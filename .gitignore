@@ -14,3 +14,5 @@ mysql_data/
 tasks.md
 uv.lock
 data/
+
+logs/
