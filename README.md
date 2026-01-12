@@ -2,7 +2,7 @@
 
 A comprehensive data modeling project demonstrating the transformation from **OLTP (Online Transaction Processing)** to **OLAP (Online Analytical Processing)** using a Star Schema design pattern.
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 DEM04-Data-Modeling/
@@ -38,7 +38,7 @@ DEM04-Data-Modeling/
 └── uv.lock                     # Dependency lock file
 ```
 
-## 🏗️ Architecture
+## Architecture
 
 ### OLTP Schema (Operational)
 - Normalized 3NF design
@@ -52,7 +52,7 @@ DEM04-Data-Modeling/
 - **Dimension Tables**: `dim_patient`, `dim_provider`, `dim_department`, `dim_diagnosis`, `dim_procedure`, `dim_date`, `dim_encounter_type`
 - **Bridge Tables**: `bridge_encounter_diagnosis`, `bridge_encounter_procedure`
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 - Docker & Docker Compose
@@ -86,7 +86,7 @@ DEM04-Data-Modeling/
    python -m src.etl.load
    ```
 
-## 📊 Key Features
+## Key Features
 
 - **10,000+ patient records** for realistic performance testing
 - **50,000+ encounter records** with multi-value relationships
@@ -94,14 +94,14 @@ DEM04-Data-Modeling/
 - **Complete ETL pipeline** with data transformation and loading
 - **Analytical queries** for business intelligence scenarios
 
-## 📚 Documentation
+## Documentation
 
 - See `docs/design_decisions.txt` for architectural decisions
 - See `docs/etl_design.txt` for ETL pipeline documentation
 - See `docs/query_analysis.txt` for performance benchmarks
 - See `docs/reflection.md` for project insights
 
-## 🛠️ Technology Stack
+## Technology Stack
 
 - **Database**: MySQL 8.0
 - **Language**: Python 3.11
