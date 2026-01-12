@@ -12,6 +12,7 @@ wheels/
 mysql_data/
 .idea/
 tasks.md
+task.md
 uv.lock
 data/
 
