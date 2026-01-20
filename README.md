@@ -36,7 +36,6 @@ DEM04-Data-Modeling/
 ├── docker-compose.yml               # Docker services configuration
 ├── pyproject.toml                   # Python project configuration
 ├── requirements.txt                 # Python dependencies
-├── task.md                          # Lab assignment instructions
 └── README.md
 ```
 
