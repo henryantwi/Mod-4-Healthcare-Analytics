@@ -1,6 +1,7 @@
 """
-Healthcare Analytics Lab - Large Dataset Generator
-Generates 10,000+ records per table for performance testing
+Healthcare Analytics Data Generator
+Synthetic data generation script to populate OLTP tables with realistic test data.
+Target volume: ~10,000 patients, ~50,000 encounters.
 """
 
 import random
@@ -435,7 +436,7 @@ def insert_billing(cursor, encounter_count=50000):
 def generate_all_data():
     """Main function to generate all data"""
     print("=" * 60)
-    print("Healthcare Analytics Lab - Data Generator")
+    print("Healthcare Analytics Data Generator")
     print("=" * 60)
     print()
     

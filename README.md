@@ -11,9 +11,9 @@ DEM04-Data-Modeling/
 ├── docs/                            # Project documentation & deliverables
 │   ├── design_decisions.txt         # Star schema design rationale
 │   ├── etl_design.txt               # ETL pipeline documentation
-│   ├── query_analysis.txt           # OLTP query performance analysis
-│   ├── reflection.md                # Project analysis & insights
-│   ├── star_schema.sql              # Star schema DDL (deliverable copy)
+│   ├── query_analysis.txt           # OLTP query performance analysis including execution plans
+│   ├── reflection.md                # Project analysis, insights, and performance trade-offs
+│   ├── star_schema.sql              # Star schema DDL
 │   └── star_schema_queries.txt      # Optimized OLAP queries
 ├── sql/                             # SQL Scripts
 │   ├── oltp/                        # Operational database (3NF)
@@ -106,16 +106,16 @@ DEM04-Data-Modeling/
 - **Performance comparison** between OLTP and Star Schema queries
 - **Pre-aggregated metrics** in fact table (diagnosis count, procedure count, billing totals)
 
-## Deliverables
+## Project Artifacts
 
-| Part | File | Description |
-|------|------|-------------|
-| Part 2 | `docs/query_analysis.txt` | 4 OLTP queries with performance analysis |
-| Part 3 | `docs/design_decisions.txt` | Star schema design choices |
-| Part 3 | `docs/star_schema.sql` | Complete star schema DDL |
-| Part 3 | `docs/star_schema_queries.txt` | 4 optimized OLAP queries |
-| Part 3 | `docs/etl_design.txt` | ETL pipeline documentation |
-| Part 4 | `docs/reflection.md` | Performance analysis & trade-offs |
+| File | Description |
+|------|-------------|
+| `docs/query_analysis.txt` | Analysis of OLTP query performance and bottlenecks |
+| `docs/design_decisions.txt` | Rationale for Star Schema design choices |
+| `docs/star_schema.sql` | Complete Star Schema DDL |
+| `docs/star_schema_queries.txt` | Set of optimized OLAP queries |
+| `docs/etl_design.txt` | Documentation of the ETL pipeline logic |
+| `docs/reflection.md` | Final analysis of performance improvements and trade-offs |
 
 ## Documentation
 

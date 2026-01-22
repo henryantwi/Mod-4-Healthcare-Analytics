@@ -1,6 +1,6 @@
 """
-Healthcare Analytics Lab - Star Schema Setup
-Creates star schema tables and populates date dimension
+Healthcare Analytics Star Schema Setup
+DDL execution script for creating the dimensional model and populating static dimensions.
 """
 
 import mysql.connector
@@ -288,7 +288,7 @@ def populate_dim_encounter_type(cursor):
 def setup_star_schema():
     """Main function to set up the star schema"""
     print("=" * 60)
-    print("Healthcare Analytics Lab - Star Schema Setup")
+    print("Star Schema Initialization")
     print("=" * 60)
     print(f"Started at: {datetime.now()}")
     print()
@@ -318,7 +318,7 @@ def setup_star_schema():
         print("STAR SCHEMA SETUP COMPLETE!")
         print("=" * 60)
         print()
-        print("Next step: Run etl_load.py to populate the remaining dimensions and fact table")
+        print("Schema setup completed. Ready for ETL load process.")
         print()
         
     except Error as e:

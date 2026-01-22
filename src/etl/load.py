@@ -1,6 +1,6 @@
 """
-Healthcare Analytics Lab - ETL Script
-Populates the Star Schema from OLTP data
+Healthcare Analytics ETL Pipeline
+Extracts data from OLTP, transforms attributes, and loads into Star Schema dimensions and facts.
 """
 
 import mysql.connector
@@ -271,7 +271,7 @@ def verify_load(cursor):
 def run_etl():
     """Main ETL function"""
     print("=" * 60)
-    print("Healthcare Analytics Lab - Star Schema ETL")
+    print("ETL Pipeline Execution")
     print("=" * 60)
     print(f"Started at: {datetime.now()}")
     print()

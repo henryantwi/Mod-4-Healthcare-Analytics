@@ -1,6 +1,6 @@
 -- ============================================================
--- Healthcare Analytics Lab - Part 3.3: STAR SCHEMA QUERIES
--- Optimized queries using the dimensional model
+-- Healthcare Analytics: Star Schema Queries (OLAP)
+-- Optimized analytical queries using the dimensional model
 -- ============================================================
 
 -- Enable profiling to compare with OLTP queries
@@ -13,7 +13,7 @@ SET profiling = 1;
 -- OLTP Version: 3 tables, 2 JOINs, DATE_FORMAT function
 -- Star Schema: 3 tables, 2 JOINs, pre-joined specialty in dim_provider
 -- 
--- IMPROVEMENT: 
+-- Optimization Details: 
 -- - No DATE_FORMAT() function - use date dimension
 -- - Specialty already denormalized in dim_provider
 -- - Direct access to month/year from dim_date
@@ -54,7 +54,7 @@ ORDER BY d.year, d.month, p.specialty_name, et.encounter_type_name;
 -- OLTP Version: 5 tables, 4 JOINs, two junction tables (row explosion!)
 -- Star Schema: 4 tables, 3 JOINs via bridge tables
 --
--- IMPROVEMENT:
+-- Optimization Details:
 -- - Bridge tables are indexed and optimized
 -- - Direct key lookups instead of junction table scans
 -- ============================================================
@@ -92,7 +92,7 @@ LIMIT 10;
 -- OLTP Version: Self-join on encounters + providers + specialties
 -- Star Schema: Self-join on fact + dim_provider (specialty pre-joined)
 --
--- IMPROVEMENT:
+-- Optimization Details:
 -- - Specialty already in dim_provider (eliminates 1 JOIN)
 -- - date_key allows efficient date range comparisons
 -- - Pre-calculated length_of_stay available
@@ -157,7 +157,7 @@ ORDER BY readmission_rate_percent DESC;
 -- OLTP Version: billing → encounters → providers → specialties (3 JOINs)
 -- Star Schema: fact → dim_date + dim_provider (2 JOINs)
 --
--- IMPROVEMENT:
+-- Optimization Details:
 -- - Billing data (total_allowed_amount) pre-aggregated in fact
 -- - No billing table join required!
 -- - Specialty denormalized in dim_provider

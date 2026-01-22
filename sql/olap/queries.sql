@@ -1,10 +1,13 @@
 -- ============================================================
--- Healthcare Analytics Lab - Part 3.3: STAR SCHEMA QUERIES
--- Optimized queries using the dimensional model
+-- Healthcare Analytics: Star Schema Queries (OLAP)
+-- Optimized analytical queries using the dimensional model
 -- ============================================================
 
 -- Enable profiling to compare with OLTP queries
 SET profiling = 1;
+
+-- Execution metrics are obtained using EXPLAIN ANALYZE
+
 
 
 -- ============================================================
@@ -13,12 +16,20 @@ SET profiling = 1;
 -- OLTP Version: 3 tables, 2 JOINs, DATE_FORMAT function
 -- Star Schema: 3 tables, 2 JOINs, pre-joined specialty in dim_provider
 -- 
--- IMPROVEMENT: 
+-- ============================================================
+-- QUERY 1: Monthly Encounters by Specialty (OPTIMIZED)
+-- ============================================================
+-- OLTP Version: 3 tables, 2 JOINs, DATE_FORMAT function
+-- Star Schema: 3 tables, 2 JOINs, pre-joined specialty in dim_provider
+-- 
+-- Optimization Details: 
 -- - No DATE_FORMAT() function - use date dimension
 -- - Specialty already denormalized in dim_provider
 -- - Direct access to month/year from dim_date
 -- ============================================================
 
+-- Query execution plan:
+EXPLAIN ANALYZE
 SELECT 
     d.year,
     d.month,
@@ -54,11 +65,19 @@ ORDER BY d.year, d.month, p.specialty_name, et.encounter_type_name;
 -- OLTP Version: 5 tables, 4 JOINs, two junction tables (row explosion!)
 -- Star Schema: 4 tables, 3 JOINs via bridge tables
 --
--- IMPROVEMENT:
+-- ============================================================
+-- QUERY 2: Top Diagnosis-Procedure Pairs (OPTIMIZED)
+-- ============================================================
+-- OLTP Version: 5 tables, 4 JOINs, two junction tables (row explosion!)
+-- Star Schema: 4 tables, 3 JOINs via bridge tables
+--
+-- Optimization Details:
 -- - Bridge tables are indexed and optimized
 -- - Direct key lookups instead of junction table scans
 -- ============================================================
 
+-- Query execution plan:
+EXPLAIN ANALYZE
 SELECT 
     diag.icd10_code,
     diag.icd10_description,
@@ -92,12 +111,20 @@ LIMIT 10;
 -- OLTP Version: Self-join on encounters + providers + specialties
 -- Star Schema: Self-join on fact + dim_provider (specialty pre-joined)
 --
--- IMPROVEMENT:
+-- ============================================================
+-- QUERY 3: 30-Day Readmission Rate by Specialty (OPTIMIZED)
+-- ============================================================
+-- OLTP Version: Self-join on encounters + providers + specialties
+-- Star Schema: Self-join on fact + dim_provider (specialty pre-joined)
+--
+-- Optimization Details:
 -- - Specialty already in dim_provider (eliminates 1 JOIN)
 -- - date_key allows efficient date range comparisons
 -- - Pre-calculated length_of_stay available
 -- ============================================================
 
+-- Query execution plan:
+EXPLAIN ANALYZE
 SELECT 
     p.specialty_name,
     COUNT(DISTINCT f1.encounter_key) AS total_inpatient_encounters,
@@ -157,13 +184,21 @@ ORDER BY readmission_rate_percent DESC;
 -- OLTP Version: billing → encounters → providers → specialties (3 JOINs)
 -- Star Schema: fact → dim_date + dim_provider (2 JOINs)
 --
--- IMPROVEMENT:
+-- ============================================================
+-- QUERY 4: Revenue by Specialty & Month (OPTIMIZED)
+-- ============================================================
+-- OLTP Version: billing → encounters → providers → specialties (3 JOINs)
+-- Star Schema: fact → dim_date + dim_provider (2 JOINs)
+--
+-- Optimization Details:
 -- - Billing data (total_allowed_amount) pre-aggregated in fact
 -- - No billing table join required!
 -- - Specialty denormalized in dim_provider
 -- - No DATE_FORMAT function
 -- ============================================================
 
+-- Query execution plan:
+EXPLAIN ANALYZE
 SELECT 
     d.year,
     d.month,

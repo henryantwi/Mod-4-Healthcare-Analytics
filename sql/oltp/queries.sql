@@ -1,10 +1,13 @@
 -- ============================================================
--- Healthcare Analytics Lab - Part 2: OLTP Performance Queries
--- Run these queries to identify performance bottlenecks
+-- Healthcare Analytics: OLTP Performance Analysis Queries
+-- Queries designed to identify potential performance bottlenecks
 -- ============================================================
 
 -- Enable profiling to measure query execution time
 SET profiling = 1;
+
+-- Execution metrics are obtained using EXPLAIN ANALYZE
+    
 
 -- ============================================================
 -- QUERY 1: Monthly Encounters by Specialty
@@ -14,6 +17,16 @@ SET profiling = 1;
 -- Tables Joined: encounters, providers, specialties (2 JOINs)
 -- ============================================================
 
+-- ============================================================
+-- QUERY 1: Monthly Encounters by Specialty
+-- ============================================================
+-- Purpose: For each month and specialty, show total encounters 
+--          and unique patients by encounter type.
+-- Tables Joined: encounters, providers, specialties (2 JOINs)
+-- ============================================================
+
+-- Query execution plan:
+EXPLAIN ANALYZE
 SELECT 
     DATE_FORMAT(e.encounter_date, '%Y-%m') AS month,
     s.specialty_name,
@@ -36,9 +49,17 @@ ORDER BY month, s.specialty_name, e.encounter_type;
 -- Purpose: Find the most common diagnosis-procedure combinations.
 -- Tables Joined: encounters, encounter_diagnoses, diagnoses, 
 --                encounter_procedures, procedures (4 JOINs)
--- Warning: Two junction tables cause row explosion!
+-- ============================================================
+-- QUERY 2: Top Diagnosis-Procedure Pairs
+-- ============================================================
+-- Purpose: Find the most common diagnosis-procedure combinations.
+-- Tables Joined: encounters, encounter_diagnoses, diagnoses, 
+--                encounter_procedures, procedures (4 JOINs)
+-- Warning: High cost due to two junction tables causing row explosion.
 -- ============================================================
 
+-- Query execution plan:
+EXPLAIN ANALYZE
 SELECT 
     d.icd10_code,
     d.icd10_description,
@@ -65,9 +86,11 @@ LIMIT 10;
 -- Purpose: Find which specialty has the highest readmission rate.
 -- Definition: Inpatient discharge, then return within 30 days.
 -- Tables Joined: encounters (self-join), providers, specialties
--- Warning: Self-join is expensive on large tables!
+-- Warning: Self-join operation is resource intensive on large tables.
 -- ============================================================
 
+-- Query execution plan:
+EXPLAIN ANALYZE
 SELECT 
     s.specialty_name,
     COUNT(DISTINCT e1.encounter_id) AS total_inpatient_encounters,
@@ -97,6 +120,8 @@ ORDER BY readmission_rate_percent DESC;
 -- Tables Joined: billing, encounters, providers, specialties (3 JOINs)
 -- ============================================================
 
+-- Query execution plan:
+EXPLAIN ANALYZE
 SELECT 
     DATE_FORMAT(b.claim_date, '%Y-%m') AS month,
     s.specialty_name,
@@ -118,5 +143,3 @@ ORDER BY month, total_revenue DESC;
 -- ======================================================== ===
 SHOW PROFILES;
 
--- To analyze a specific query plan, use:
--- EXPLAIN ANALYZE [query];

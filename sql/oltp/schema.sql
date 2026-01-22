@@ -1,6 +1,6 @@
 -- ============================================================
--- Healthcare Analytics Lab: OLTP Schema (3NF Normalized)
--- Part 1: Normalized Transactional Database
+-- Healthcare Analytics: OLTP Schema (3NF Normalized)
+-- Operational Transactional Database Definition
 -- ============================================================
 
 -- Drop tables if they exist (for re-running script)
