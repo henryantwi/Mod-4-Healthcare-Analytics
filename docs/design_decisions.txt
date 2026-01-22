@@ -131,6 +131,45 @@ WHY NOT DENORMALIZE INTO FACT:
 - Would duplicate all other fact columns unnecessarily
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ================================================================================
 SUMMARY: STAR SCHEMA ARCHITECTURE
 ================================================================================
