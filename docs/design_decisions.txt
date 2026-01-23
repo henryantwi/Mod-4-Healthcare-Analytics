@@ -49,8 +49,9 @@ DECISION 2: DIMENSION TABLES
    - first_name, last_name, full_name
    - credential
    - specialty_name, specialty_code (denormalized from specialties)
-   - department_name (denormalized from departments)
-   PURPOSE: Flatten provider → specialty → department hierarchy
+   NOTE: Department is NOT included here to avoid redundancy with dim_department.
+         Access department via fact_encounters.department_key → dim_department.
+   PURPOSE: Provider attributes with denormalized specialty only
 
 4. dim_department
    - department_key (surrogate key)

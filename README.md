@@ -54,7 +54,7 @@ DEM04-Data-Modeling/
 - **Dimension Tables**: 
   - `dim_date` - Calendar dimension with pre-extracted date attributes
   - `dim_patient` - Patient demographics with derived age groups
-  - `dim_provider` - Provider info with denormalized specialty/department
+  - `dim_provider` - Provider info with denormalized specialty
   - `dim_department` - Hospital department attributes
   - `dim_diagnosis` - ICD-10 diagnosis codes
   - `dim_procedure` - CPT procedure codes

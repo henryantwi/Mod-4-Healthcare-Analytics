@@ -59,13 +59,13 @@ def load_dim_patient(cursor):
 
 
 def load_dim_provider(cursor):
-    """Load provider dimension with denormalized specialty and department"""
+    """Load provider dimension with denormalized specialty (department accessed via dim_department)"""
     print("Loading dim_provider...")
     
     query = """
     INSERT INTO dim_provider (provider_id, first_name, last_name, full_name,
                               credential, specialty_id, specialty_name, 
-                              specialty_code, department_id, department_name)
+                              specialty_code)
     SELECT 
         p.provider_id,
         p.first_name,
@@ -74,12 +74,9 @@ def load_dim_provider(cursor):
         p.credential,
         s.specialty_id,
         s.specialty_name,
-        s.specialty_code,
-        d.department_id,
-        d.department_name
+        s.specialty_code
     FROM providers p
     JOIN specialties s ON p.specialty_id = s.specialty_id
-    JOIN departments d ON p.department_id = d.department_id
     """
     cursor.execute(query)
     print(f"  Loaded {cursor.rowcount} providers into dim_provider")

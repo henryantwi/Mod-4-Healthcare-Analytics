@@ -73,8 +73,9 @@ CREATE TABLE dim_patient (
 
 -- ============================================================
 -- DIMENSION: dim_provider
--- Purpose: Healthcare providers with denormalized specialty/dept
+-- Purpose: Healthcare providers with denormalized specialty
 -- Grain: One row per provider
+-- Note: Department info accessed via dim_department (no redundancy)
 -- ============================================================
 CREATE TABLE dim_provider (
     provider_key INT PRIMARY KEY AUTO_INCREMENT,
@@ -84,18 +85,13 @@ CREATE TABLE dim_provider (
     full_name VARCHAR(200),                -- Derived
     credential VARCHAR(20),
     
-    -- Denormalized from specialties table
+    -- Denormalized from specialties table (no separate dim_specialty)
     specialty_id INT,
     specialty_name VARCHAR(100),
     specialty_code VARCHAR(10),
     
-    -- Denormalized from departments table
-    department_id INT,
-    department_name VARCHAR(100),
-    
     UNIQUE INDEX idx_provider_id (provider_id),
-    INDEX idx_specialty (specialty_name),
-    INDEX idx_department (department_name)
+    INDEX idx_specialty (specialty_name)
 );
 
 

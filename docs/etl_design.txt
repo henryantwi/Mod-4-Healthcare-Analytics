@@ -97,9 +97,12 @@ UPDATE STRATEGY: SCD Type 1 (Overwrite)
 1.3 dim_provider
 --------------------------------------------------------------------------------
 
-STRATEGY: Full load with denormalization
+STRATEGY: Full load with denormalized specialty
 
-SOURCE: OLTP.providers + specialties + departments (JOINed)
+SOURCE: OLTP.providers + specialties (JOINed)
+
+NOTE: Department info is NOT included in dim_provider to avoid redundancy.
+      Department is accessed via dim_department through fact_encounters.department_key.
 
 TRANSFORMATION LOGIC:
 ```
@@ -111,12 +114,9 @@ SELECT INTO dim_provider:
     credential,
     specialty_id,       -- From providers
     specialty_name,     -- JOIN from specialties
-    specialty_code,     -- JOIN from specialties
-    department_id,      -- From providers  
-    department_name     -- JOIN from departments
+    specialty_code      -- JOIN from specialties
 FROM providers p
 JOIN specialties s ON p.specialty_id = s.specialty_id
-JOIN departments d ON p.department_id = d.department_id
 ```
 
 --------------------------------------------------------------------------------
@@ -408,7 +408,7 @@ LOAD SEQUENCE (dependencies must be satisfied):
 1. dim_date           -- No dependencies (one-time)
 2. dim_encounter_type -- No dependencies (static)
 3. dim_patient        -- No dependencies
-4. dim_provider       -- Denormalizes specialties & departments
+4. dim_provider       -- Denormalizes specialties only
 5. dim_department     -- No dependencies
 6. dim_diagnosis      -- No dependencies
 7. dim_procedure      -- No dependencies
