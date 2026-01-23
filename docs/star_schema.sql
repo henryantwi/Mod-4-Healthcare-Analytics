@@ -1,6 +1,7 @@
 -- ============================================================
 -- Healthcare Analytics Lab - Part 3.2: STAR SCHEMA DDL
 -- Optimized dimensional model for healthcare analytics
+-- Includes: SCD Type 2 for provider/patient, incremental ETL support
 -- ============================================================
 
 -- ============================================================
@@ -16,6 +17,20 @@ DROP TABLE IF EXISTS dim_department;
 DROP TABLE IF EXISTS dim_provider;
 DROP TABLE IF EXISTS dim_patient;
 DROP TABLE IF EXISTS dim_date;
+DROP TABLE IF EXISTS etl_metadata;
+
+
+-- ============================================================
+-- ETL METADATA TABLE
+-- Purpose: Track last load timestamps for incremental loading
+-- ============================================================
+CREATE TABLE etl_metadata (
+    table_name VARCHAR(50) PRIMARY KEY,
+    last_load_timestamp DATETIME NOT NULL,
+    records_loaded INT DEFAULT 0,
+    load_type VARCHAR(20) DEFAULT 'INCREMENTAL',  -- FULL or INCREMENTAL
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
 
 
 -- ============================================================
@@ -45,9 +60,10 @@ CREATE TABLE dim_date (
 
 
 -- ============================================================
--- DIMENSION: dim_patient
+-- DIMENSION: dim_patient (SCD Type 2)
 -- Purpose: Patient demographics with derived attributes
--- Grain: One row per patient (SCD Type 1 - overwrite)
+-- SCD Type 2: Tracks history - new row created when patient changes
+-- Grain: One row per patient VERSION (can have multiple rows per patient)
 -- ============================================================
 CREATE TABLE dim_patient (
     patient_key INT PRIMARY KEY AUTO_INCREMENT,
@@ -62,19 +78,23 @@ CREATE TABLE dim_patient (
     age_group VARCHAR(20),                 -- Derived: 0-17, 18-34, etc.
     mrn VARCHAR(20),
     
-    -- Audit columns
-    effective_date DATE DEFAULT (CURRENT_DATE),
+    -- SCD Type 2 columns
+    effective_date DATE NOT NULL,          -- When this version became active
+    end_date DATE DEFAULT '9999-12-31',    -- When this version ended (9999-12-31 = current)
+    is_current BOOLEAN DEFAULT TRUE,       -- TRUE = active record
     
-    UNIQUE INDEX idx_patient_id (patient_id),
+    INDEX idx_patient_id (patient_id),
+    INDEX idx_patient_current (patient_id, is_current),  -- For lookups
     INDEX idx_age_group (age_group),
     INDEX idx_gender (gender)
 );
 
 
 -- ============================================================
--- DIMENSION: dim_provider
+-- DIMENSION: dim_provider (SCD Type 2)
 -- Purpose: Healthcare providers with denormalized specialty/dept
--- Grain: One row per provider
+-- SCD Type 2: Tracks history - critical for tracking specialty changes
+-- Grain: One row per provider VERSION (can have multiple rows per provider)
 -- ============================================================
 CREATE TABLE dim_provider (
     provider_key INT PRIMARY KEY AUTO_INCREMENT,
@@ -93,7 +113,13 @@ CREATE TABLE dim_provider (
     department_id INT,
     department_name VARCHAR(100),
     
-    UNIQUE INDEX idx_provider_id (provider_id),
+    -- SCD Type 2 columns
+    effective_date DATE NOT NULL,          -- When this version became active
+    end_date DATE DEFAULT '9999-12-31',    -- When this version ended
+    is_current BOOLEAN DEFAULT TRUE,       -- TRUE = active record
+    
+    INDEX idx_provider_id (provider_id),
+    INDEX idx_provider_current (provider_id, is_current),  -- For lookups
     INDEX idx_specialty (specialty_name),
     INDEX idx_department (department_name)
 );

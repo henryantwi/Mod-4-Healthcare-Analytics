@@ -42,12 +42,25 @@ def create_star_schema_tables(cursor):
         "DROP TABLE IF EXISTS dim_department",
         "DROP TABLE IF EXISTS dim_provider",
         "DROP TABLE IF EXISTS dim_patient",
-        "DROP TABLE IF EXISTS dim_date"
+        "DROP TABLE IF EXISTS dim_date",
+        "DROP TABLE IF EXISTS etl_metadata"
     ]
     
     for sql in drop_tables:
         cursor.execute(sql)
     print("  - Dropped existing tables")
+    
+    # Create ETL metadata table for tracking incremental loads
+    cursor.execute("""
+    CREATE TABLE etl_metadata (
+        table_name VARCHAR(50) PRIMARY KEY,
+        last_load_timestamp DATETIME NOT NULL,
+        records_loaded INT DEFAULT 0,
+        load_type VARCHAR(20) DEFAULT 'INCREMENTAL',
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+    """)
+    print("  - Created etl_metadata")
     
     # Create dimension tables
     cursor.execute("""
@@ -72,6 +85,7 @@ def create_star_schema_tables(cursor):
     """)
     print("  - Created dim_date")
     
+    # dim_patient with SCD Type 2 columns
     cursor.execute("""
     CREATE TABLE dim_patient (
         patient_key INT PRIMARY KEY AUTO_INCREMENT,
@@ -85,14 +99,18 @@ def create_star_schema_tables(cursor):
         age INT,
         age_group VARCHAR(20),
         mrn VARCHAR(20),
-        effective_date DATE DEFAULT (CURRENT_DATE),
-        UNIQUE INDEX idx_patient_id (patient_id),
+        effective_date DATE NOT NULL,
+        end_date DATE DEFAULT '9999-12-31',
+        is_current BOOLEAN DEFAULT TRUE,
+        INDEX idx_patient_id (patient_id),
+        INDEX idx_patient_current (patient_id, is_current),
         INDEX idx_age_group (age_group),
         INDEX idx_gender (gender)
     )
     """)
-    print("  - Created dim_patient")
+    print("  - Created dim_patient (SCD Type 2)")
     
+    # dim_provider with SCD Type 2 columns
     cursor.execute("""
     CREATE TABLE dim_provider (
         provider_key INT PRIMARY KEY AUTO_INCREMENT,
@@ -106,12 +124,16 @@ def create_star_schema_tables(cursor):
         specialty_code VARCHAR(10),
         department_id INT,
         department_name VARCHAR(100),
-        UNIQUE INDEX idx_provider_id (provider_id),
+        effective_date DATE NOT NULL,
+        end_date DATE DEFAULT '9999-12-31',
+        is_current BOOLEAN DEFAULT TRUE,
+        INDEX idx_provider_id (provider_id),
+        INDEX idx_provider_current (provider_id, is_current),
         INDEX idx_specialty (specialty_name),
         INDEX idx_department (department_name)
     )
     """)
-    print("  - Created dim_provider")
+    print("  - Created dim_provider (SCD Type 2)")
     
     cursor.execute("""
     CREATE TABLE dim_department (

@@ -25,7 +25,10 @@ CREATE TABLE patients (
     last_name VARCHAR(100),
     date_of_birth DATE,
     gender CHAR(1),
-    mrn VARCHAR(20) UNIQUE
+    mrn VARCHAR(20) UNIQUE,
+    -- Audit columns for incremental ETL
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
 -- ============================================================
@@ -35,7 +38,9 @@ CREATE TABLE patients (
 CREATE TABLE specialties (
     specialty_id INT PRIMARY KEY,
     specialty_name VARCHAR(100),
-    specialty_code VARCHAR(10)
+    specialty_code VARCHAR(10),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
 -- ============================================================
@@ -46,7 +51,9 @@ CREATE TABLE departments (
     department_id INT PRIMARY KEY,
     department_name VARCHAR(100),
     floor INT,
-    capacity INT
+    capacity INT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
 -- ============================================================
@@ -60,6 +67,8 @@ CREATE TABLE providers (
     credential VARCHAR(20),
     specialty_id INT,
     department_id INT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (specialty_id) REFERENCES specialties(specialty_id),
     FOREIGN KEY (department_id) REFERENCES departments(department_id)
 );
@@ -77,6 +86,8 @@ CREATE TABLE encounters (
     encounter_date DATETIME,
     discharge_date DATETIME,
     department_id INT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (patient_id) REFERENCES patients(patient_id),
     FOREIGN KEY (provider_id) REFERENCES providers(provider_id),
     FOREIGN KEY (department_id) REFERENCES departments(department_id)
@@ -84,6 +95,7 @@ CREATE TABLE encounters (
 
 -- Create index on encounter_date for performance
 CREATE INDEX idx_encounter_date ON encounters(encounter_date);
+CREATE INDEX idx_encounters_updated ON encounters(updated_at);
 
 -- ============================================================
 -- TABLE 6: diagnoses
@@ -92,7 +104,9 @@ CREATE INDEX idx_encounter_date ON encounters(encounter_date);
 CREATE TABLE diagnoses (
     diagnosis_id INT PRIMARY KEY,
     icd10_code VARCHAR(10),
-    icd10_description VARCHAR(200)
+    icd10_description VARCHAR(200),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
 -- ============================================================
@@ -104,6 +118,8 @@ CREATE TABLE encounter_diagnoses (
     encounter_id INT,
     diagnosis_id INT,
     diagnosis_sequence INT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (encounter_id) REFERENCES encounters(encounter_id),
     FOREIGN KEY (diagnosis_id) REFERENCES diagnoses(diagnosis_id)
 );
@@ -115,7 +131,9 @@ CREATE TABLE encounter_diagnoses (
 CREATE TABLE procedures (
     procedure_id INT PRIMARY KEY,
     cpt_code VARCHAR(10),
-    cpt_description VARCHAR(200)
+    cpt_description VARCHAR(200),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
 -- ============================================================
@@ -127,6 +145,8 @@ CREATE TABLE encounter_procedures (
     encounter_id INT,
     procedure_id INT,
     procedure_date DATE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (encounter_id) REFERENCES encounters(encounter_id),
     FOREIGN KEY (procedure_id) REFERENCES procedures(procedure_id)
 );
@@ -142,11 +162,14 @@ CREATE TABLE billing (
     allowed_amount DECIMAL(12,2),
     claim_date DATE,
     claim_status VARCHAR(50),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (encounter_id) REFERENCES encounters(encounter_id)
 );
 
 -- Create index on claim_date for performance
 CREATE INDEX idx_claim_date ON billing(claim_date);
+CREATE INDEX idx_billing_updated ON billing(updated_at);
 
 -- ============================================================
 -- SAMPLE DATA INSERTION

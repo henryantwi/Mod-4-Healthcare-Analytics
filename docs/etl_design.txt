@@ -2,440 +2,270 @@
 HEALTHCARE ANALYTICS LAB - PART 3.4: ETL DESIGN
 ================================================================================
 
-This document outlines the ETL (Extract, Transform, Load) logic for populating
-the star schema from the normalized OLTP database.
-
-================================================================================
-1. DIMENSION LOAD LOGIC
-================================================================================
-
---------------------------------------------------------------------------------
-1.1 dim_date (One-Time Load)
---------------------------------------------------------------------------------
-
-STRATEGY: Full load, one-time population
-
-APPROACH:
-- Generate all dates for a reasonable range (2020-2030)
-- Load once during initial setup
-- Date dimension is static and doesn't change
-
-PSEUDOCODE:
-```
-FOR each date FROM '2020-01-01' TO '2030-12-31':
-    date_key = format(date, 'YYYYMMDD')  -- e.g., 20240115
-    
-    INSERT INTO dim_date (
-        date_key,
-        calendar_date = date,
-        year = YEAR(date),
-        quarter = QUARTER(date),
-        month = MONTH(date),
-        month_name = MONTHNAME(date),
-        week_of_year = WEEK(date),
-        day_of_month = DAY(date),
-        day_of_week = DAYOFWEEK(date),
-        day_name = DAYNAME(date),
-        is_weekend = (DAYOFWEEK(date) IN (1, 7)),
-        is_holiday = lookup_holiday_calendar(date),
-        fiscal_year = YEAR(date),  -- Adjust if fiscal year differs
-        fiscal_quarter = QUARTER(date)
-    )
-END FOR
-```
-
---------------------------------------------------------------------------------
-1.2 dim_patient
---------------------------------------------------------------------------------
-
-STRATEGY: Full load with transformation
-
-SOURCE: OLTP.patients table
-
-TRANSFORMATION LOGIC:
-```
-FOR each patient IN patients:
-    
-    -- Calculate age
-    age = DATEDIFF(CURRENT_DATE, patient.date_of_birth) / 365
-    
-    -- Derive age group
-    IF age < 18 THEN age_group = '0-17'
-    ELSE IF age < 35 THEN age_group = '18-34'
-    ELSE IF age < 55 THEN age_group = '35-54'
-    ELSE IF age < 75 THEN age_group = '55-74'
-    ELSE age_group = '75+'
-    
-    -- Derive gender description
-    gender_desc = CASE patient.gender 
-                    WHEN 'M' THEN 'Male'
-                    WHEN 'F' THEN 'Female'
-                    ELSE 'Unknown'
-                  END
-    
-    INSERT INTO dim_patient (
-        patient_id = patient.patient_id,
-        first_name = patient.first_name,
-        last_name = patient.last_name,
-        full_name = CONCAT(patient.first_name, ' ', patient.last_name),
-        date_of_birth = patient.date_of_birth,
-        gender = patient.gender,
-        gender_description = gender_desc,
-        age = age,
-        age_group = age_group,
-        mrn = patient.mrn,
-        effective_date = CURRENT_DATE
-    )
-END FOR
-```
-
-UPDATE STRATEGY: SCD Type 1 (Overwrite)
-- On subsequent loads, update existing records if source data changes
-- Use patient_id as the match key
-
---------------------------------------------------------------------------------
-1.3 dim_provider
---------------------------------------------------------------------------------
-
-STRATEGY: Full load with denormalized specialty
-
-SOURCE: OLTP.providers + specialties (JOINed)
-
-NOTE: Department info is NOT included in dim_provider to avoid redundancy.
-      Department is accessed via dim_department through fact_encounters.department_key.
-
-TRANSFORMATION LOGIC:
-```
-SELECT INTO dim_provider:
-    provider_id,
-    first_name,
-    last_name,
-    full_name = CONCAT(first_name, ' ', last_name),
-    credential,
-    specialty_id,       -- From providers
-    specialty_name,     -- JOIN from specialties
-    specialty_code      -- JOIN from specialties
-FROM providers p
-JOIN specialties s ON p.specialty_id = s.specialty_id
-```
-
---------------------------------------------------------------------------------
-1.4 dim_department
---------------------------------------------------------------------------------
-
-STRATEGY: Full load (direct copy)
-
-SOURCE: OLTP.departments
-
-TRANSFORMATION: Minimal - just assign surrogate key
-```
-INSERT INTO dim_department
-SELECT 
-    AUTO_INCREMENT as department_key,
-    department_id,
-    department_name,
-    floor,
-    capacity
-FROM departments
-```
-
---------------------------------------------------------------------------------
-1.5 dim_diagnosis
---------------------------------------------------------------------------------
-
-STRATEGY: Full load
-
-SOURCE: OLTP.diagnoses
-
-TRANSFORMATION:
-```
-INSERT INTO dim_diagnosis
-SELECT
-    AUTO_INCREMENT as diagnosis_key,
-    diagnosis_id,
-    icd10_code,
-    icd10_description,
-    diagnosis_category = derive_category_from_icd10(icd10_code)
-        -- e.g., 'I%' = Circulatory, 'E%' = Endocrine, etc.
-FROM diagnoses
-```
-
---------------------------------------------------------------------------------
-1.6 dim_procedure
---------------------------------------------------------------------------------
-
-STRATEGY: Full load
-
-SOURCE: OLTP.procedures
-
-TRANSFORMATION:
-```
-INSERT INTO dim_procedure
-SELECT
-    AUTO_INCREMENT as procedure_key,
-    procedure_id,
-    cpt_code,
-    cpt_description,
-    procedure_category = derive_category_from_cpt(cpt_code)
-        -- e.g., '99xxx' = E&M, '7xxxx' = Radiology, etc.
-FROM procedures
-```
-
---------------------------------------------------------------------------------
-1.7 dim_encounter_type
---------------------------------------------------------------------------------
-
-STRATEGY: Static load (hardcoded)
-
-VALUES:
-```
-INSERT INTO dim_encounter_type VALUES
-    (1, 'Outpatient', 'Ambulatory'),
-    (2, 'Inpatient', 'Acute Care'),
-    (3, 'ER', 'Emergency')
-```
+zThis document outlines how to move data from OLTP (operational database) to 
+OLAP (star schema) for analytics. We use INCREMENTAL LOADING (only new/changed
+records) and SCD TYPE 2 (track history for key dimensions).
 
 
 ================================================================================
-2. FACT TABLE LOAD LOGIC
+1. HOW WE TRACK CHANGES (Incremental Loading)
 ================================================================================
 
-STRATEGY: Full load with dimension key lookups and pre-aggregations
+PROBLEM: Re-loading ALL data every day is slow and wasteful.
 
-SOURCE: 
-- OLTP.encounters (main source)
-- OLTP.encounter_diagnoses (for count)
-- OLTP.encounter_procedures (for count)
-- OLTP.billing (for amounts)
+SOLUTION: Track when we last loaded data, then only load new/changed records.
 
-PSEUDOCODE:
-```
-FOR each encounter IN encounters:
-    
-    -- Step 1: Look up dimension keys
-    date_key = FORMAT(encounter.encounter_date, 'YYYYMMDD')
-    discharge_date_key = FORMAT(encounter.discharge_date, 'YYYYMMDD')
-    
-    patient_key = LOOKUP dim_patient WHERE patient_id = encounter.patient_id
-    provider_key = LOOKUP dim_provider WHERE provider_id = encounter.provider_id
-    department_key = LOOKUP dim_department WHERE department_id = encounter.department_id
-    encounter_type_key = LOOKUP dim_encounter_type 
-                         WHERE encounter_type_name = encounter.encounter_type
-    
-    -- Step 2: Calculate pre-aggregated metrics
-    diagnosis_count = SELECT COUNT(*) 
-                      FROM encounter_diagnoses 
-                      WHERE encounter_id = encounter.encounter_id
-    
-    procedure_count = SELECT COUNT(*) 
-                      FROM encounter_procedures 
-                      WHERE encounter_id = encounter.encounter_id
-    
-    -- Step 3: Get billing data
-    billing_record = SELECT claim_amount, allowed_amount, claim_status
-                     FROM billing
-                     WHERE encounter_id = encounter.encounter_id
-    
-    total_claim_amount = COALESCE(billing_record.claim_amount, 0)
-    total_allowed_amount = COALESCE(billing_record.allowed_amount, 0)
-    claim_status = billing_record.claim_status
-    
-    -- Step 4: Calculate derived metrics
-    length_of_stay = DATEDIFF(encounter.discharge_date, encounter.encounter_date)
-    
-    -- Step 5: Insert into fact table
-    INSERT INTO fact_encounters (
-        encounter_id,
-        date_key,
-        discharge_date_key,
-        patient_key,
-        provider_key,
-        department_key,
-        encounter_type_key,
-        encounter_date,
-        discharge_date,
-        diagnosis_count,
-        procedure_count,
-        total_claim_amount,
-        total_allowed_amount,
-        claim_status,
-        length_of_stay_days
-    )
-    
-END FOR
+1.1 Tracking Table (etl_metadata)
+---------------------------------
+```sql
+CREATE TABLE etl_metadata (
+    table_name VARCHAR(50) PRIMARY KEY,
+    last_load_timestamp DATETIME,
+    records_loaded INT
+);
 ```
 
-PERFORMANCE OPTIMIZATION:
-- Use batch inserts (1000 rows at a time)
-- Create dimension lookup hash tables in memory
-- Disable indexes during load, rebuild after
+1.2 How It Works
+----------------
+First run:  Load ALL data, save timestamp "2026-01-20 02:00:00"
+Second run: Read last timestamp, load only records WHERE updated_at >= that time
+Third run:  Same pattern - always load only what changed since last run
+
+1.3 OLTP Audit Columns
+----------------------
+OLTP tables need these columns to track changes:
+- created_at DATETIME DEFAULT NOW()
+- updated_at DATETIME DEFAULT NOW() ON UPDATE NOW()
+
+These auto-update when records change, so ETL knows what's new.
 
 
 ================================================================================
-3. BRIDGE TABLE LOAD LOGIC
+2. SLOWLY CHANGING DIMENSIONS (SCD)
 ================================================================================
 
---------------------------------------------------------------------------------
-3.1 bridge_encounter_diagnosis
---------------------------------------------------------------------------------
+PROBLEM: When data changes (e.g., doctor changes specialty), should we:
+- Overwrite the old value? (lose history)
+- Keep both old and new? (preserve history)
 
-STRATEGY: Load after fact table, using surrogate keys
+2.1 SCD Type 1 (Overwrite) - Used for most dimensions
+------------------------------------------------------
+Simply update the record. History is lost but queries are simple.
 
-PSEUDOCODE:
-```
-FOR each record IN encounter_diagnoses:
-    
-    -- Look up surrogate keys
-    encounter_key = LOOKUP fact_encounters 
-                    WHERE encounter_id = record.encounter_id
-    
-    diagnosis_key = LOOKUP dim_diagnosis 
-                    WHERE diagnosis_id = record.diagnosis_id
-    
-    INSERT INTO bridge_encounter_diagnosis (
-        encounter_key,
-        diagnosis_key,
-        diagnosis_sequence = record.diagnosis_sequence
-    )
-    
-END FOR
-```
+Used for: dim_department, dim_diagnosis, dim_procedure
 
---------------------------------------------------------------------------------
-3.2 bridge_encounter_procedure
---------------------------------------------------------------------------------
+Example:
+  Before: Dr. Smith | Internal Medicine
+  After:  Dr. Smith | Cardiology  (old value gone)
 
-STRATEGY: Load after fact table, using surrogate keys
+2.2 SCD Type 2 (Track History) - Used for provider & patient
+------------------------------------------------------------
+Create NEW row for each change. Old rows preserved with end dates.
 
-PSEUDOCODE:
-```
-FOR each record IN encounter_procedures:
-    
-    -- Look up surrogate keys
-    encounter_key = LOOKUP fact_encounters 
-                    WHERE encounter_id = record.encounter_id
-    
-    procedure_key = LOOKUP dim_procedure 
-                    WHERE procedure_id = record.procedure_id
-    
-    INSERT INTO bridge_encounter_procedure (
-        encounter_key,
-        procedure_key,
-        procedure_date = record.procedure_date
-    )
-    
-END FOR
-```
+Used for: dim_provider, dim_patient
+
+Example:
+  Row 1: Dr. Smith | Internal Medicine | 2024-01-01 | 2026-01-24 | FALSE
+  Row 2: Dr. Smith | Cardiology        | 2026-01-25 | 9999-12-31 | TRUE
+
+Why this matters:
+- January reports still show "Internal Medicine" (accurate!)
+- Current reports show "Cardiology"
+- Audit trail preserved (required for healthcare compliance)
+
+2.3 SCD Type 2 Columns
+----------------------
+- effective_date: When this version became active
+- end_date: When this version ended (9999-12-31 = still current)
+- is_current: TRUE for the active record, FALSE for history
 
 
 ================================================================================
-4. REFRESH STRATEGY
+3. DIMENSION LOAD LOGIC
 ================================================================================
 
---------------------------------------------------------------------------------
-4.1 Load Frequency
---------------------------------------------------------------------------------
+3.1 dim_date (One-Time Load)
+----------------------------
+Load all dates 2020-2030 during initial setup. Never changes.
 
-RECOMMENDED: Daily incremental load
+3.2 dim_encounter_type (Static)
+-------------------------------
+Hardcoded: Outpatient, Inpatient, ER. Never changes.
 
-SCHEDULE:
-- Nightly batch job (e.g., 2:00 AM)
-- After OLTP daily maintenance window
+3.3 dim_patient (SCD Type 2)
+----------------------------
+Source: OLTP.patients
 
---------------------------------------------------------------------------------
-4.2 Incremental Load Approach
---------------------------------------------------------------------------------
+Transformations:
+- Calculate age from date_of_birth
+- Derive age_group (0-17, 18-34, 35-54, 55-74, 75+)
+- Derive gender_description (M→Male, F→Female)
 
-For fact_encounters:
-```
--- Only load encounters created/modified since last load
-WHERE encounter_date >= @last_load_timestamp
-   OR last_modified >= @last_load_timestamp
-```
+SCD Type 2 Logic:
+- NEW patient → INSERT with is_current=TRUE
+- CHANGED patient → UPDATE old row (end_date=today, is_current=FALSE)
+                  → INSERT new row (effective_date=today, is_current=TRUE)
+- UNCHANGED → Skip (no action)
 
-For dimensions:
-```
--- Check for new or changed records
--- Use MERGE/UPSERT pattern:
-MERGE INTO dim_patient AS target
-USING patients AS source
-ON target.patient_id = source.patient_id
-WHEN MATCHED AND source changed THEN UPDATE...
-WHEN NOT MATCHED THEN INSERT...
-```
+3.4 dim_provider (SCD Type 2)
+-----------------------------
+Source: OLTP.providers + specialties (joined)
 
---------------------------------------------------------------------------------
-4.3 Late-Arriving Facts
---------------------------------------------------------------------------------
+Denormalizes specialty into provider record (avoids extra join in queries).
 
-PROBLEM: Billing data may arrive days after the encounter
+SCD Type 2 Logic: Same as patient
+- Track specialty changes over time
+- Historical reports show correct specialty at time of service
 
-SOLUTION:
+3.5 dim_department (SCD Type 1)
+-------------------------------
+Source: OLTP.departments
+Simple upsert - update existing or insert new.
+
+3.6 dim_diagnosis (SCD Type 1)
+------------------------------
+Source: OLTP.diagnoses
+Derives category from ICD-10 code (I% = Circulatory, E% = Endocrine, etc.)
+
+3.7 dim_procedure (SCD Type 1)
+------------------------------
+Source: OLTP.procedures  
+Derives category from CPT code range.
+
+
+================================================================================
+4. FACT TABLE LOAD LOGIC
+================================================================================
+
+Source: OLTP.encounters + billing + counts from junction tables
+
+4.1 Incremental Load
+--------------------
+Only load encounters where:
+- created_at >= last_load_timestamp (new encounters), OR
+- updated_at >= last_load_timestamp (modified encounters)
+
+4.2 Dimension Key Lookups
+-------------------------
+For each encounter, look up surrogate keys:
+- date_key → from encounter_date formatted as YYYYMMDD
+- patient_key → from dim_patient WHERE patient_id = X AND is_current = TRUE
+- provider_key → from dim_provider WHERE provider_id = X AND is_current = TRUE
+- department_key → from dim_department WHERE department_id = X
+- encounter_type_key → from dim_encounter_type WHERE name = X
+
+IMPORTANT: For SCD Type 2 dimensions, always use is_current = TRUE
+to get the latest version.
+
+4.3 Pre-Aggregated Metrics
+--------------------------
+Calculate once during ETL, store in fact table:
+- diagnosis_count = COUNT from encounter_diagnoses
+- procedure_count = COUNT from encounter_procedures
+- total_claim_amount = from billing table
+- total_allowed_amount = from billing table
+- length_of_stay_days = discharge_date - encounter_date
+
+4.4 Late-Arriving Billing
+-------------------------
+Billing often arrives days after the encounter.
+
+Solution:
 1. Initial load: Insert encounter with billing = 0
-2. Delta load: Update fact when billing arrives
+2. Later runs: UPDATE fact with billing when it arrives
 
-```
--- Update encounters that received billing after initial load
-UPDATE fact_encounters f
-SET 
-    total_claim_amount = b.claim_amount,
-    total_allowed_amount = b.allowed_amount,
-    claim_status = b.claim_status
+```sql
+UPDATE fact_encounters 
+SET total_claim_amount = b.claim_amount,
+    total_allowed_amount = b.allowed_amount
 FROM billing b
-WHERE f.encounter_id = b.encounter_id
-  AND f.total_claim_amount = 0
-  AND b.claim_date >= @last_load_timestamp
+WHERE fact_encounters.encounter_id = b.encounter_id
+  AND fact_encounters.total_claim_amount = 0
+  AND b.updated_at >= @last_load_timestamp
 ```
 
---------------------------------------------------------------------------------
-4.4 Full Refresh Option
---------------------------------------------------------------------------------
 
-For smaller datasets or monthly reconciliation:
-1. Truncate all star schema tables
-2. Reload dimensions
-3. Reload fact table
-4. Reload bridge tables
-5. Rebuild indexes
+================================================================================
+5. BRIDGE TABLE LOAD LOGIC
+================================================================================
+
+Bridge tables connect many-to-many relationships using surrogate keys.
+
+5.1 bridge_encounter_diagnosis
+------------------------------
+For each encounter_diagnosis record:
+- Look up encounter_key from fact_encounters
+- Look up diagnosis_key from dim_diagnosis
+- Insert into bridge table
+
+5.2 bridge_encounter_procedure
+------------------------------
+Same pattern - convert natural keys to surrogate keys.
+
+Incremental: Only load for encounters added since last load.
 
 
 ================================================================================
-5. ETL EXECUTION ORDER
+6. REFRESH STRATEGY
 ================================================================================
 
-LOAD SEQUENCE (dependencies must be satisfied):
+6.1 Recommended: Daily Incremental (Production)
+-----------------------------------------------
+Schedule: 2:00 AM nightly
 
-1. dim_date           -- No dependencies (one-time)
-2. dim_encounter_type -- No dependencies (static)
-3. dim_patient        -- No dependencies
-4. dim_provider       -- Denormalizes specialties only
-5. dim_department     -- No dependencies
-6. dim_diagnosis      -- No dependencies
-7. dim_procedure      -- No dependencies
-8. fact_encounters    -- Depends on ALL dimensions
-9. bridge_encounter_diagnosis  -- Depends on fact + dim_diagnosis
-10. bridge_encounter_procedure -- Depends on fact + dim_procedure
+Process:
+1. Read last_load_timestamp from etl_metadata
+2. Load new/changed dimension records (SCD Type 2 for provider/patient)
+3. Load new/changed encounters to fact table
+4. Update late-arriving billing
+5. Load bridge table records for new encounters
+6. Update etl_metadata with new timestamp
+
+Benefits:
+- Fast (processes only changes)
+- No downtime (tables stay online)
+- Efficient resource usage
+
+6.2 Alternative: Full Refresh (Development/Recovery)
+----------------------------------------------------
+When to use:
+- Initial setup
+- Monthly reconciliation
+- After major data fixes
+
+Process:
+1. Truncate all star schema tables (except dim_date)
+2. Reload all dimensions
+3. Reload all facts
+4. Reload all bridge tables
 
 
 ================================================================================
-6. ERROR HANDLING
+7. ETL EXECUTION ORDER
 ================================================================================
 
-1. MISSING DIMENSION KEYS:
-   - Log warning, use default "Unknown" dimension record
-   - Or reject the fact record and log for investigation
+1. dim_date           ← One-time (already loaded)
+2. dim_encounter_type ← Static (already loaded)
+3. dim_patient        ← SCD Type 2
+4. dim_provider       ← SCD Type 2
+5. dim_department     ← SCD Type 1 (upsert)
+6. dim_diagnosis      ← SCD Type 1 (upsert)
+7. dim_procedure      ← SCD Type 1 (upsert)
+8. fact_encounters    ← Incremental load
+9. Update billing     ← Late-arriving facts
+10. bridge_diagnosis  ← For new encounters only
+11. bridge_procedure  ← For new encounters only
+12. Update metadata   ← Save new timestamp
 
-2. DUPLICATE RECORDS:
-   - Use UPSERT/MERGE pattern to handle idempotent loads
-   - Log duplicates for review
 
-3. DATA TYPE MISMATCHES:
-   - Validate and cleanse data during extraction
-   - Use TRY_CAST or similar for graceful handling
+================================================================================
+8. ERROR HANDLING
+================================================================================
 
-4. REFERENTIAL INTEGRITY:
-   - Load dimensions BEFORE facts
-   - Validate FK lookups succeed before inserting
+1. Missing dimension key → Log warning, skip record or use "Unknown" default
+2. Duplicate records → Use UPSERT pattern (INSERT ON DUPLICATE KEY UPDATE)
+3. Referential integrity → Always load dimensions BEFORE facts
+4. Failed load → Rollback transaction, retry from last successful checkpoint
 
 
 ================================================================================
